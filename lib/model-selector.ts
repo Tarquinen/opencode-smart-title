@@ -41,6 +41,7 @@ export interface ModelSelectionResult {
     modelInfo: ModelInfo;
     source: 'config' | 'fallback';
     reason?: string;
+    failedModel?: ModelInfo; // The model that failed, if any
 }
 
 /**
@@ -60,6 +61,8 @@ export async function selectModel(
 ): Promise<ModelSelectionResult> {
     logger?.info('model-selector', 'Model selection started', { configModel });
     const opencodeAI = new OpencodeAI();
+
+    let failedModelInfo: ModelInfo | undefined;
 
     if (configModel) {
         const parts = configModel.split('/')
@@ -92,6 +95,8 @@ export async function selectModel(
                     modelID,
                     error: error.message
                 });
+                // Track the failed model
+                failedModelInfo = { providerID, modelID };
             }
         }
     }
@@ -137,7 +142,8 @@ export async function selectModel(
                 model,
                 modelInfo: { providerID, modelID: fallbackModelID },
                 source: 'fallback',
-                reason: `Using ${providerID}/${fallbackModelID}`
+                reason: `Using ${providerID}/${fallbackModelID}`,
+                failedModel: failedModelInfo
             };
         } catch (error: any) {
             logger?.warn('model-selector', `✗ Failed to use ${providerID}/${fallbackModelID}`, {

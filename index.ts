@@ -24,6 +24,9 @@ interface OpenCodeClient {
         update: (params: { path: { id: string }, body: { title: string } }) => Promise<any>
         get: (params: { path: { id: string } }) => Promise<any>
     }
+    tui: {
+        showToast: (params: { body: { title: string, message: string, variant: "info" | "success" | "warning" | "error", duration: number } }) => Promise<any>
+    }
 }
 
 // Conversation turn structure for context extraction
@@ -262,12 +265,13 @@ function cleanTitle(raw: string): string {
 async function generateTitleFromContext(
     context: string,
     configModel: string | undefined,
-    logger: Logger
+    logger: Logger,
+    client: OpenCodeClient
 ): Promise<string | null> {
     try {
         logger.debug('title-generation', 'Selecting model', { configModel })
 
-        const { model, modelInfo, source, reason } = await selectModel(
+        const { model, modelInfo, source, reason, failedModel } = await selectModel(
             logger,
             configModel
         )
@@ -278,6 +282,29 @@ async function generateTitleFromContext(
             source,
             reason
         })
+
+        // Show toast if we had to fallback from a configured model
+        if (failedModel) {
+            try {
+                await client.tui.showToast({
+                    body: {
+                        title: "Smart Title: Model fallback",
+                        message: `${failedModel.providerID}/${failedModel.modelID} failed\nUsing ${modelInfo.providerID}/${modelInfo.modelID}`,
+                        variant: "info",
+                        duration: 5000
+                    }
+                })
+                logger.info('title-generation', 'Toast notification shown for model fallback', {
+                    failedModel,
+                    selectedModel: modelInfo
+                })
+            } catch (toastError: any) {
+                logger.error('title-generation', 'Failed to show toast notification', {
+                    error: toastError.message
+                })
+                // Don't fail the whole operation if toast fails
+            }
+        }
 
         logger.debug('title-generation', 'Generating title', {
             contextLength: context.length
@@ -353,7 +380,8 @@ async function updateSessionTitle(
         const newTitle = await generateTitleFromContext(
             context,
             config.model,
-            logger
+            logger,
+            client
         )
 
         if (!newTitle) {
