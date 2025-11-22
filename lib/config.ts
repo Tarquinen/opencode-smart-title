@@ -1,9 +1,10 @@
 // lib/config.ts
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs'
-import { join } from 'path'
+import { readFileSync, writeFileSync, existsSync, mkdirSync, statSync } from 'fs'
+import { join, dirname } from 'path'
 import { homedir } from 'os'
 import { parse } from 'jsonc-parser'
 import { Logger } from './logger'
+import type { PluginInput } from '@opencode-ai/plugin'
 
 export interface PluginConfig {
     enabled: boolean
@@ -18,22 +19,57 @@ const defaultConfig: PluginConfig = {
     updateThreshold: 1
 }
 
-const CONFIG_DIR = join(homedir(), '.config', 'opencode')
-const CONFIG_PATH_JSONC = join(CONFIG_DIR, 'smart-title.jsonc')
-const CONFIG_PATH_JSON = join(CONFIG_DIR, 'smart-title.json')
+const GLOBAL_CONFIG_DIR = join(homedir(), '.config', 'opencode')
+const GLOBAL_CONFIG_PATH_JSONC = join(GLOBAL_CONFIG_DIR, 'smart-title.jsonc')
+const GLOBAL_CONFIG_PATH_JSON = join(GLOBAL_CONFIG_DIR, 'smart-title.json')
+
+/**
+ * Searches for .opencode directory starting from current directory and going up
+ * Returns the path to .opencode directory if found, null otherwise
+ */
+function findOpencodeDir(startDir: string): string | null {
+    let current = startDir
+    while (current !== '/') {
+        const candidate = join(current, '.opencode')
+        if (existsSync(candidate) && statSync(candidate).isDirectory()) {
+            return candidate
+        }
+        const parent = dirname(current)
+        if (parent === current) break // Reached root
+        current = parent
+    }
+    return null
+}
 
 /**
  * Determines which config file to use (prefers .jsonc, falls back to .json)
+ * Checks both project-level and global configs
  */
-function getConfigPath(): string {
-    if (existsSync(CONFIG_PATH_JSONC)) {
-        return CONFIG_PATH_JSONC
+function getConfigPaths(ctx?: PluginInput): { global: string | null, project: string | null } {
+    // Global config paths
+    let globalPath: string | null = null
+    if (existsSync(GLOBAL_CONFIG_PATH_JSONC)) {
+        globalPath = GLOBAL_CONFIG_PATH_JSONC
+    } else if (existsSync(GLOBAL_CONFIG_PATH_JSON)) {
+        globalPath = GLOBAL_CONFIG_PATH_JSON
     }
-    if (existsSync(CONFIG_PATH_JSON)) {
-        return CONFIG_PATH_JSON
+
+    // Project config paths (if context provided)
+    let projectPath: string | null = null
+    if (ctx?.directory) {
+        const opencodeDir = findOpencodeDir(ctx.directory)
+        if (opencodeDir) {
+            const projectJsonc = join(opencodeDir, 'smart-title.jsonc')
+            const projectJson = join(opencodeDir, 'smart-title.json')
+            if (existsSync(projectJsonc)) {
+                projectPath = projectJsonc
+            } else if (existsSync(projectJson)) {
+                projectPath = projectJson
+            }
+        }
     }
-    // Default to .jsonc for new installations (supports comments)
-    return CONFIG_PATH_JSONC
+
+    return { global: globalPath, project: projectPath }
 }
 
 /**
@@ -41,8 +77,8 @@ function getConfigPath(): string {
  */
 function createDefaultConfig(): void {
     // Ensure the directory exists
-    if (!existsSync(CONFIG_DIR)) {
-        mkdirSync(CONFIG_DIR, { recursive: true })
+    if (!existsSync(GLOBAL_CONFIG_DIR)) {
+        mkdirSync(GLOBAL_CONFIG_DIR, { recursive: true })
     }
 
     const configContent = `{
@@ -63,39 +99,74 @@ function createDefaultConfig(): void {
 }
 `
 
-    writeFileSync(CONFIG_PATH_JSONC, configContent, 'utf-8')
+    writeFileSync(GLOBAL_CONFIG_PATH_JSONC, configContent, 'utf-8')
 }
 
 /**
- * Loads configuration from ~/.config/opencode/smart-title.jsonc or smart-title.json
- * Creates the file with defaults if it doesn't exist
- * Supports both JSON and JSONC (JSON with Comments) formats
+ * Loads a single config file and parses it
  */
-export function getConfig(): PluginConfig {
-    const configPath = getConfigPath()
-
-    // Create default config if neither file exists
-    if (!existsSync(configPath)) {
-        createDefaultConfig()
-    }
-
+function loadConfigFile(configPath: string): Partial<PluginConfig> | null {
     try {
         const fileContent = readFileSync(configPath, 'utf-8')
-        // jsonc-parser handles both JSON and JSONC formats
-        const userConfig = parse(fileContent) as Partial<PluginConfig>
-
-        // Merge user config with defaults (user config takes precedence)
-        return {
-            enabled: userConfig.enabled ?? defaultConfig.enabled,
-            debug: userConfig.debug ?? defaultConfig.debug,
-            model: userConfig.model,
-            updateThreshold: userConfig.updateThreshold ?? defaultConfig.updateThreshold
-        }
+        return parse(fileContent) as Partial<PluginConfig>
     } catch (error: any) {
-        // Log errors to file (always enabled for config errors)
         const logger = new Logger(true)
         logger.error('config', `Failed to read config from ${configPath}: ${error.message}`)
-        logger.error('config', 'Using default configuration')
-        return defaultConfig
+        return null
     }
+}
+
+/**
+ * Loads configuration with support for both global and project-level configs
+ * 
+ * Config resolution order:
+ * 1. Start with default config
+ * 2. Merge with global config (~/.config/opencode/smart-title.jsonc)
+ * 3. Merge with project config (.opencode/smart-title.jsonc) if found
+ * 
+ * Project config overrides global config, which overrides defaults.
+ * 
+ * @param ctx - Plugin input context (optional). If provided, will search for project-level config.
+ * @returns Merged configuration
+ */
+export function getConfig(ctx?: PluginInput): PluginConfig {
+    let config = { ...defaultConfig }
+    const configPaths = getConfigPaths(ctx)
+    const logger = new Logger(true) // Always log config loading
+
+    // 1. Load global config
+    if (configPaths.global) {
+        const globalConfig = loadConfigFile(configPaths.global)
+        if (globalConfig) {
+            config = {
+                enabled: globalConfig.enabled ?? config.enabled,
+                debug: globalConfig.debug ?? config.debug,
+                model: globalConfig.model ?? config.model,
+                updateThreshold: globalConfig.updateThreshold ?? config.updateThreshold
+            }
+            logger.info('config', 'Loaded global config', { path: configPaths.global })
+        }
+    } else {
+        // Create default global config if it doesn't exist
+        createDefaultConfig()
+        logger.info('config', 'Created default global config', { path: GLOBAL_CONFIG_PATH_JSONC })
+    }
+
+    // 2. Load project config (overrides global)
+    if (configPaths.project) {
+        const projectConfig = loadConfigFile(configPaths.project)
+        if (projectConfig) {
+            config = {
+                enabled: projectConfig.enabled ?? config.enabled,
+                debug: projectConfig.debug ?? config.debug,
+                model: projectConfig.model ?? config.model,
+                updateThreshold: projectConfig.updateThreshold ?? config.updateThreshold
+            }
+            logger.info('config', 'Loaded project config (overrides global)', { path: configPaths.project })
+        }
+    } else if (ctx?.directory) {
+        logger.debug('config', 'No project config found', { searchedFrom: ctx.directory })
+    }
+
+    return config
 }

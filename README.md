@@ -25,7 +25,12 @@ Add to `~/.config/opencode/opencode.json`:
 
 ## Configuration
 
-Edit `~/.config/opencode/smart-title.jsonc`:
+The plugin supports both global and project-level configuration:
+
+- **Global:** `~/.config/opencode/smart-title.jsonc` - Applies to all OpenCode sessions
+- **Project:** `.opencode/smart-title.jsonc` - Applies only to the current project
+
+Project configuration takes precedence over global configuration. The plugin creates a default global configuration file on first run.
 
 ```jsonc
 {
@@ -42,6 +47,39 @@ Edit `~/.config/opencode/smart-title.jsonc`:
   "updateThreshold": 1
 }
 ```
+
+### Configuration Hierarchy
+
+1. **Defaults** - Built-in plugin defaults
+2. **Global config** (`~/.config/opencode/smart-title.jsonc`) - Overrides defaults
+3. **Project config** (`.opencode/smart-title.jsonc`) - Overrides global config
+
+This allows you to:
+- Set global defaults for all projects
+- Override settings per-project (e.g., disable for certain projects, use different models)
+- Commit project config to version control for team consistency
+
+### Creating Project-Level Config
+
+To create a project-specific configuration:
+
+1. Create `.opencode` directory in your project root (if it doesn't exist)
+2. Create `smart-title.jsonc` file inside `.opencode/`
+3. Add your project-specific settings
+
+```bash
+# In your project directory
+mkdir -p .opencode
+cat > .opencode/smart-title.jsonc << 'EOF'
+{
+  // Project-specific Smart Title settings
+  "updateThreshold": 3,
+  "model": "openai/gpt-5-mini"
+}
+EOF
+```
+
+The global config (`~/.config/opencode/smart-title.jsonc`) is automatically created on first run. Project configs are opt-in and must be created manually.
 
 ## How It Works
 

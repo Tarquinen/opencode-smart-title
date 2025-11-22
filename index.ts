@@ -418,8 +418,8 @@ async function updateSessionTitle(
  * Smart Title Plugin
  * Automatically updates session titles using AI and smart context selection
  */
-const SmartTitlePlugin: Plugin = async ({ client }) => {
-    const config = getConfig()
+const SmartTitlePlugin: Plugin = async (ctx) => {
+    const config = getConfig(ctx)
 
     // Exit early if plugin is disabled
     if (!config.enabled) {
@@ -427,13 +427,15 @@ const SmartTitlePlugin: Plugin = async ({ client }) => {
     }
 
     const logger = new Logger(config.debug)
+    const { client } = ctx
 
     logger.info('plugin', 'Smart Title plugin initialized', {
         enabled: config.enabled,
         debug: config.debug,
         model: config.model,
         updateThreshold: config.updateThreshold,
-        configFile: join(homedir(), ".config", "opencode", "smart-title.jsonc"),
+        globalConfigFile: join(homedir(), ".config", "opencode", "smart-title.jsonc"),
+        projectConfigFile: ctx.directory ? join(ctx.directory, ".opencode", "smart-title.jsonc") : "N/A",
         logDirectory: join(homedir(), ".config", "opencode", "logs", "smart-title")
     })
 
