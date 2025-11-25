@@ -38,7 +38,7 @@
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "^1.0.27",
-    "@tarquinen/opencode-auth-provider": "^0.1.4",
+    "@tarquinen/opencode-auth-provider": "^0.1.5",
     "ai": "^5.0.98",
     "jsonc-parser": "^3.3.1"
   },
