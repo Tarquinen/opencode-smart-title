@@ -44,9 +44,24 @@ The plugin creates a default global config on first run.
   // "model": "anthropic/claude-haiku-4-5",
 
   // Update title every N idle events (1 = every time you pause)
-  "updateThreshold": 1
+  "updateThreshold": 1,
+
+  // Title format with placeholders:
+  // - {title} - AI-generated title based on conversation
+  // - {cwd} - Full current working directory path
+  // - {cwdTip} - Last folder name of cwd (e.g., "my-project")
+  "titleFormat": "{title}"
 }
 ```
+
+### Example Formats
+
+| Format | Example Output |
+|--------|----------------|
+| `{title}` | `Debugging API errors` |
+| `[{cwdTip}] {title}` | `[my-project] Debugging API errors` |
+| `{cwdTip}: {title}` | `my-project: Debugging API errors` |
+| `{title} ({cwdTip})` | `Debugging API errors (my-project)` |
 
 ## License
 

@@ -16,7 +16,7 @@ import { getConfig } from "./lib/config.js"
 import { Logger } from "./lib/logger.js"
 import { selectModel } from "./lib/model-selector.js"
 import { TITLE_PROMPT } from "./prompt.js"
-import { join } from "path"
+import { join, basename } from "path"
 import { homedir } from "os"
 
 // Type for OpenCode client object
@@ -262,6 +262,33 @@ function cleanTitle(raw: string): string {
 }
 
 /**
+ * Placeholder values available for title formatting
+ */
+interface PlaceholderValues {
+    title: string
+    cwd: string
+    cwdTip: string
+}
+
+/**
+ * Apply placeholder replacements to title format
+ * Supports: {title}, {cwd}, {cwdTip}
+ */
+function applyTitleFormat(format: string, values: PlaceholderValues): string {
+    let result = format
+        .replace(/\{title\}/g, values.title)
+        .replace(/\{cwd\}/g, values.cwd)
+        .replace(/\{cwdTip\}/g, values.cwdTip)
+
+    // Truncate final result if too long
+    if (result.length > 100) {
+        result = result.substring(0, 97) + "..."
+    }
+
+    return result
+}
+
+/**
  * Generate title from conversation context using AI
  */
 async function generateTitleFromContext(
@@ -351,10 +378,11 @@ async function updateSessionTitle(
     client: OpenCodeClient,
     sessionId: string,
     logger: Logger,
-    config: ReturnType<typeof getConfig>
+    config: ReturnType<typeof getConfig>,
+    cwd: string
 ): Promise<void> {
     try {
-        logger.info('update-title', 'Title update triggered', { sessionId })
+        logger.info('update-title', 'Title update triggered', { sessionId, cwd })
 
         // Extract smart context
         const turns = await extractSmartContext(client, sessionId, logger)
@@ -381,22 +409,33 @@ async function updateSessionTitle(
         // Format context
         const context = formatContextForTitle(turns)
 
-        // Generate title
-        const newTitle = await generateTitleFromContext(
+        // Generate title from AI
+        const generatedTitle = await generateTitleFromContext(
             context,
             config.model,
             logger,
             client
         )
 
-        if (!newTitle) {
+        if (!generatedTitle) {
             logger.warn('update-title', 'Title generation returned null', { sessionId })
             return
         }
 
+        // Apply title format with placeholders
+        const placeholderValues: PlaceholderValues = {
+            title: generatedTitle,
+            cwd: cwd,
+            cwdTip: basename(cwd)
+        }
+
+        const newTitle = applyTitleFormat(config.titleFormat, placeholderValues)
+
         logger.info('update-title', 'Updating session with new title', {
             sessionId,
-            title: newTitle
+            generatedTitle,
+            titleFormat: config.titleFormat,
+            finalTitle: newTitle
         })
 
         // Update session
@@ -434,11 +473,15 @@ const SmartTitlePlugin: Plugin = async (ctx) => {
     const logger = new Logger(config.debug)
     const { client } = ctx
 
+    const cwd = ctx.directory || process.cwd()
+
     logger.info('plugin', 'Smart Title plugin initialized', {
         enabled: config.enabled,
         debug: config.debug,
         model: config.model,
         updateThreshold: config.updateThreshold,
+        titleFormat: config.titleFormat,
+        cwd,
         globalConfigFile: join(homedir(), ".config", "opencode", "smart-title.jsonc"),
         projectConfigFile: ctx.directory ? join(ctx.directory, ".opencode", "smart-title.jsonc") : "N/A",
         logDirectory: join(homedir(), ".config", "opencode", "logs", "smart-title")
@@ -485,7 +528,7 @@ const SmartTitlePlugin: Plugin = async (ctx) => {
                 })
 
                 // Fire and forget - don't block the event handler
-                updateSessionTitle(client, sessionId, logger, config).catch((error) => {
+                updateSessionTitle(client, sessionId, logger, config, cwd).catch((error) => {
                     logger.error('event', 'Title update failed', {
                         sessionId,
                         error: error.message,
