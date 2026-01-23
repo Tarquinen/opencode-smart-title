@@ -10,12 +10,22 @@ export interface PluginConfig {
     debug: boolean
     model?: string
     updateThreshold: number
+    /**
+     * Title format with placeholders:
+     * - {title} - AI-generated title
+     * - {cwd} - Full current working directory path
+     * - {cwdTip} - Last folder name of cwd (e.g., "my-project")
+     * - {cwdTip:N} - Last N folder segments (e.g., {cwdTip:2} -> "github/my-project")
+     * - {cwdTip:N:sep} - Last N segments with custom separator (e.g., {cwdTip:2: - } -> "github - my-project")
+     */
+    titleFormat: string
 }
 
 const defaultConfig: PluginConfig = {
     enabled: true,
     debug: false,
-    updateThreshold: 1
+    updateThreshold: 1,
+    titleFormat: '{title}'
 }
 
 const GLOBAL_CONFIG_DIR = join(homedir(), '.config', 'opencode')
@@ -94,7 +104,16 @@ function createDefaultConfig(): void {
   // "model": "anthropic/claude-haiku-4-5",
 
   // Update title every N idle events (default: 1)
-  "updateThreshold": 1
+  "updateThreshold": 1,
+
+  // Title format with placeholders:
+  // - {title} - AI-generated title based on conversation
+  // - {cwd} - Full current working directory path
+  // - {cwdTip} - Last folder name of cwd (e.g., "my-project")
+  // - {cwdTip:N} - Last N folder segments (e.g., {cwdTip:2} -> "github/my-project")
+  // - {cwdTip:N:sep} - Last N segments with custom separator (e.g., {cwdTip:2: - } -> "github - my-project")
+  // Example: "[{cwdTip}] {title}" produces "[my-project] Debugging API errors"
+  "titleFormat": "{title}"
 }
 `
 
@@ -137,7 +156,8 @@ export function getConfig(ctx?: PluginInput): PluginConfig {
                 enabled: globalConfig.enabled ?? config.enabled,
                 debug: globalConfig.debug ?? config.debug,
                 model: globalConfig.model ?? config.model,
-                updateThreshold: globalConfig.updateThreshold ?? config.updateThreshold
+                updateThreshold: globalConfig.updateThreshold ?? config.updateThreshold,
+                titleFormat: globalConfig.titleFormat ?? config.titleFormat
             }
         }
     } else {
@@ -151,7 +171,8 @@ export function getConfig(ctx?: PluginInput): PluginConfig {
                 enabled: projectConfig.enabled ?? config.enabled,
                 debug: projectConfig.debug ?? config.debug,
                 model: projectConfig.model ?? config.model,
-                updateThreshold: projectConfig.updateThreshold ?? config.updateThreshold
+                updateThreshold: projectConfig.updateThreshold ?? config.updateThreshold,
+                titleFormat: projectConfig.titleFormat ?? config.titleFormat
             }
         }
     }
