@@ -50,6 +50,8 @@ The plugin creates a default global config on first run.
   // - {title} - AI-generated title based on conversation
   // - {cwd} - Full current working directory path
   // - {cwdTip} - Last folder name of cwd (e.g., "my-project")
+  // - {cwdTip:N} - Last N folder segments (e.g., {cwdTip:2} -> "github/my-project")
+  // - {cwdTip:N:sep} - Last N segments with custom separator
   "titleFormat": "{title}"
 }
 ```
@@ -60,7 +62,8 @@ The plugin creates a default global config on first run.
 |--------|----------------|
 | `{title}` | `Debugging API errors` |
 | `[{cwdTip}] {title}` | `[my-project] Debugging API errors` |
-| `{cwdTip}: {title}` | `my-project: Debugging API errors` |
+| `[{cwdTip:2}] {title}` | `[github/my-project] Debugging API errors` |
+| `[{cwdTip:2: - }] {title}` | `[github - my-project] Debugging API errors` |
 | `{title} ({cwdTip})` | `Debugging API errors (my-project)` |
 
 ## License

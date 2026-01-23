@@ -15,6 +15,8 @@ export interface PluginConfig {
      * - {title} - AI-generated title
      * - {cwd} - Full current working directory path
      * - {cwdTip} - Last folder name of cwd (e.g., "my-project")
+     * - {cwdTip:N} - Last N folder segments (e.g., {cwdTip:2} -> "github/my-project")
+     * - {cwdTip:N:sep} - Last N segments with custom separator (e.g., {cwdTip:2: - } -> "github - my-project")
      */
     titleFormat: string
 }
@@ -108,6 +110,8 @@ function createDefaultConfig(): void {
   // - {title} - AI-generated title based on conversation
   // - {cwd} - Full current working directory path
   // - {cwdTip} - Last folder name of cwd (e.g., "my-project")
+  // - {cwdTip:N} - Last N folder segments (e.g., {cwdTip:2} -> "github/my-project")
+  // - {cwdTip:N:sep} - Last N segments with custom separator (e.g., {cwdTip:2: - } -> "github - my-project")
   // Example: "[{cwdTip}] {title}" produces "[my-project] Debugging API errors"
   "titleFormat": "{title}"
 }

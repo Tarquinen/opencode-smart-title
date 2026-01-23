@@ -16,7 +16,7 @@ import { getConfig } from "./lib/config.js"
 import { Logger } from "./lib/logger.js"
 import { selectModel } from "./lib/model-selector.js"
 import { TITLE_PROMPT } from "./prompt.js"
-import { join, basename } from "path"
+import { join } from "path"
 import { homedir } from "os"
 
 // Type for OpenCode client object
@@ -267,18 +267,34 @@ function cleanTitle(raw: string): string {
 interface PlaceholderValues {
     title: string
     cwd: string
-    cwdTip: string
+}
+
+/**
+ * Resolve a cwdTip placeholder with optional parameters
+ * Formats:
+ *   {cwdTip}        - last folder name (default)
+ *   {cwdTip:N}      - last N folder segments, joined by "/"
+ *   {cwdTip:N:sep}  - last N folder segments, joined by custom separator
+ */
+function resolveCwdTip(cwd: string, depth: number, separator: string): string {
+    const segments = cwd.split('/').filter(s => s.length > 0)
+    const selected = segments.slice(-depth)
+    return selected.join(separator)
 }
 
 /**
  * Apply placeholder replacements to title format
- * Supports: {title}, {cwd}, {cwdTip}
+ * Supports: {title}, {cwd}, {cwdTip}, {cwdTip:N}, {cwdTip:N:separator}
  */
 function applyTitleFormat(format: string, values: PlaceholderValues): string {
     let result = format
         .replace(/\{title\}/g, values.title)
         .replace(/\{cwd\}/g, values.cwd)
-        .replace(/\{cwdTip\}/g, values.cwdTip)
+        .replace(/\{cwdTip(?::(\d+)(?::([^}]+))?)?\}/g, (_match, depthStr, separator) => {
+            const depth = depthStr ? parseInt(depthStr, 10) : 1
+            const sep = separator ?? '/'
+            return resolveCwdTip(values.cwd, depth, sep)
+        })
 
     // Truncate final result if too long
     if (result.length > 100) {
@@ -425,8 +441,7 @@ async function updateSessionTitle(
         // Apply title format with placeholders
         const placeholderValues: PlaceholderValues = {
             title: generatedTitle,
-            cwd: cwd,
-            cwdTip: basename(cwd)
+            cwd: cwd
         }
 
         const newTitle = applyTitleFormat(config.titleFormat, placeholderValues)
