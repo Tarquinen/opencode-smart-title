@@ -9,7 +9,9 @@ export interface PluginConfig {
     enabled: boolean
     debug: boolean
     model?: string
+    prompt?: string
     updateThreshold: number
+    excludeDirectories?: string[]
 }
 
 const defaultConfig: PluginConfig = {
@@ -93,8 +95,17 @@ function createDefaultConfig(): void {
   // Examples: "anthropic/claude-haiku-4-5", "openai/gpt-5-mini"
   // "model": "anthropic/claude-haiku-4-5",
 
+  // Optional: Custom prompt for title generation
+  // If not specified, uses the built-in English prompt
+  // "prompt": "你是一个标题生成器。分析对话内容，生成一个简短的中文标题。",
+
   // Update title every N idle events (default: 1)
   "updateThreshold": 1
+
+  // Optional: Directories to exclude from title generation
+  // Sessions in these directories will not get automatic titles
+  // Uses prefix matching (e.g. "/home/ubuntu/.heartbeat" matches any subdirectory)
+  // "excludeDirectories": ["/home/ubuntu/.heartbeat"]
 }
 `
 
@@ -137,7 +148,9 @@ export function getConfig(ctx?: PluginInput): PluginConfig {
                 enabled: globalConfig.enabled ?? config.enabled,
                 debug: globalConfig.debug ?? config.debug,
                 model: globalConfig.model ?? config.model,
-                updateThreshold: globalConfig.updateThreshold ?? config.updateThreshold
+                prompt: globalConfig.prompt ?? config.prompt,
+                updateThreshold: globalConfig.updateThreshold ?? config.updateThreshold,
+                excludeDirectories: globalConfig.excludeDirectories ?? config.excludeDirectories
             }
         }
     } else {
@@ -151,7 +164,9 @@ export function getConfig(ctx?: PluginInput): PluginConfig {
                 enabled: projectConfig.enabled ?? config.enabled,
                 debug: projectConfig.debug ?? config.debug,
                 model: projectConfig.model ?? config.model,
-                updateThreshold: projectConfig.updateThreshold ?? config.updateThreshold
+                prompt: projectConfig.prompt ?? config.prompt,
+                updateThreshold: projectConfig.updateThreshold ?? config.updateThreshold,
+                excludeDirectories: projectConfig.excludeDirectories ?? config.excludeDirectories
             }
         }
     }
