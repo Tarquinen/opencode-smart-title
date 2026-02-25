@@ -124,6 +124,60 @@ function loadConfigFile(configPath: string): Partial<PluginConfig> | null {
     }
 }
 
+function normalizeBoolean(value: unknown, fallback: boolean): boolean {
+    return typeof value === 'boolean' ? value : fallback
+}
+
+function normalizeOptionalString(value: unknown): string | undefined {
+    if (typeof value !== 'string') {
+        return undefined
+    }
+
+    const normalized = value.trim()
+    return normalized.length > 0 ? normalized : undefined
+}
+
+function normalizePositiveInt(value: unknown, fallback: number): number {
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+        return fallback
+    }
+
+    const normalized = Math.floor(value)
+    return normalized > 0 ? normalized : fallback
+}
+
+function normalizeExcludeDirectories(value: unknown): string[] | undefined {
+    if (!Array.isArray(value)) {
+        return undefined
+    }
+
+    return value
+        .filter((entry): entry is string => typeof entry === 'string')
+        .map(entry => {
+            const trimmed = entry.trim()
+            if (trimmed === '/') {
+                return '/'
+            }
+            return trimmed.replace(/\/+$/, '')
+        })
+        .filter(entry => entry.length > 0)
+}
+
+function mergeConfig(base: PluginConfig, overlay: Partial<PluginConfig>): PluginConfig {
+    const model = normalizeOptionalString(overlay.model)
+    const prompt = normalizeOptionalString(overlay.prompt)
+    const excludeDirectories = normalizeExcludeDirectories(overlay.excludeDirectories)
+
+    return {
+        enabled: normalizeBoolean(overlay.enabled, base.enabled),
+        debug: normalizeBoolean(overlay.debug, base.debug),
+        model: model ?? base.model,
+        prompt: prompt ?? base.prompt,
+        updateThreshold: normalizePositiveInt(overlay.updateThreshold, base.updateThreshold),
+        excludeDirectories: excludeDirectories ?? base.excludeDirectories
+    }
+}
+
 /**
  * Loads configuration with support for both global and project-level configs
  * 
@@ -144,14 +198,7 @@ export function getConfig(ctx?: PluginInput): PluginConfig {
     if (configPaths.global) {
         const globalConfig = loadConfigFile(configPaths.global)
         if (globalConfig) {
-            config = {
-                enabled: globalConfig.enabled ?? config.enabled,
-                debug: globalConfig.debug ?? config.debug,
-                model: globalConfig.model ?? config.model,
-                prompt: globalConfig.prompt ?? config.prompt,
-                updateThreshold: globalConfig.updateThreshold ?? config.updateThreshold,
-                excludeDirectories: globalConfig.excludeDirectories ?? config.excludeDirectories
-            }
+            config = mergeConfig(config, globalConfig)
         }
     } else {
         createDefaultConfig()
@@ -160,14 +207,7 @@ export function getConfig(ctx?: PluginInput): PluginConfig {
     if (configPaths.project) {
         const projectConfig = loadConfigFile(configPaths.project)
         if (projectConfig) {
-            config = {
-                enabled: projectConfig.enabled ?? config.enabled,
-                debug: projectConfig.debug ?? config.debug,
-                model: projectConfig.model ?? config.model,
-                prompt: projectConfig.prompt ?? config.prompt,
-                updateThreshold: projectConfig.updateThreshold ?? config.updateThreshold,
-                excludeDirectories: projectConfig.excludeDirectories ?? config.excludeDirectories
-            }
+            config = mergeConfig(config, projectConfig)
         }
     }
 
