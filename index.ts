@@ -467,9 +467,11 @@ const SmartTitlePlugin: Plugin = async (ctx) => {
                 // Check excludeDirectories
                 if (config.excludeDirectories && config.excludeDirectories.length > 0 && directory) {
                     const normalizedDir = directory.replace(/\/+$/, '')
+                    if (!normalizedDir) {
+                        return
+                    }
                     const excluded = config.excludeDirectories.some(excl => {
-                        const normalizedExcl = excl.replace(/\/+$/, '')
-                        return normalizedDir === normalizedExcl || normalizedDir.startsWith(normalizedExcl + '/')
+                        return normalizedDir === excl || normalizedDir.startsWith(excl + '/')
                     })
                     if (excluded) {
                         logger.debug('event', 'Session directory excluded from title generation', {

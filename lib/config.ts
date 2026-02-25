@@ -100,7 +100,7 @@ function createDefaultConfig(): void {
   // "prompt": "你是一个标题生成器。分析对话内容，生成一个简短的中文标题。",
 
   // Update title every N idle events (default: 1)
-  "updateThreshold": 1
+  "updateThreshold": 1,
 
   // Optional: Directories to exclude from title generation
   // Sessions in these directories will not get automatic titles
