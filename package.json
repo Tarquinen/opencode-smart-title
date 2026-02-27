@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
   "name": "@the3asic/opencode-smart-title",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "type": "module",
   "description": "OpenCode plugin that automatically generates meaningful session titles using AI and smart context selection",
   "main": "./dist/index.js",
