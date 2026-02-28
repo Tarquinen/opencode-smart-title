@@ -72,7 +72,7 @@ async function isSubagentSession(
     client: OpenCodeClient,
     sessionID: string,
     logger: Logger
-): Promise<boolean> {
+): Promise<{ isSubagent: boolean; directory?: string }> {
     try {
         const result = await client.session.get({ path: { id: sessionID } })
 
@@ -81,16 +81,16 @@ async function isSubagentSession(
                 sessionID,
                 parentID: result.data.parentID
             })
-            return true
+            return { isSubagent: true }
         }
 
-        return false
+        return { isSubagent: false, directory: result.data?.directory }
     } catch (error: any) {
         logger.error("subagent-check", "Failed to check if session is subagent", {
             sessionID,
             error: error.message
         })
-        return false
+        return { isSubagent: false }
     }
 }
 
@@ -268,7 +268,8 @@ async function generateTitleFromContext(
     context: string,
     configModel: string | undefined,
     logger: Logger,
-    client: OpenCodeClient
+    client: OpenCodeClient,
+    customPrompt?: string
 ): Promise<string | null> {
     try {
         logger.debug('title-generation', 'Selecting model', { configModel })
@@ -308,8 +309,11 @@ async function generateTitleFromContext(
             }
         }
 
+        const prompt = customPrompt || TITLE_PROMPT
+
         logger.debug('title-generation', 'Generating title', {
-            contextLength: context.length
+            contextLength: context.length,
+            promptSource: customPrompt ? 'custom' : 'built-in'
         })
 
         // Lazy import - only load the 2.8MB ai package when actually needed
@@ -320,7 +324,7 @@ async function generateTitleFromContext(
             messages: [
                 {
                     role: 'user',
-                    content: `${TITLE_PROMPT}\n\n<conversation>\n${context}\n</conversation>\n\nOutput the title now:`
+                    content: `${prompt}\n\n<conversation>\n${context}\n</conversation>\n\nOutput the title now:`
                 }
             ]
         })
@@ -386,7 +390,8 @@ async function updateSessionTitle(
             context,
             config.model,
             logger,
-            client
+            client,
+            config.prompt
         )
 
         if (!newTitle) {
@@ -453,9 +458,29 @@ const SmartTitlePlugin: Plugin = async (ctx) => {
 
                 logger.debug('event', 'Session became idle', { sessionId })
 
-                // Skip if this is a subagent session
-                if (await isSubagentSession(client, sessionId, logger)) {
+                // Skip if this is a subagent session, and get directory
+                const { isSubagent, directory } = await isSubagentSession(client, sessionId, logger)
+                if (isSubagent) {
                     return
+                }
+
+                // Check excludeDirectories
+                if (config.excludeDirectories && config.excludeDirectories.length > 0 && directory) {
+                    const normalizedDir = directory.replace(/\/+$/, '')
+                    if (!normalizedDir) {
+                        return
+                    }
+                    const excluded = config.excludeDirectories.some(excl => {
+                        return normalizedDir === excl || normalizedDir.startsWith(excl + '/')
+                    })
+                    if (excluded) {
+                        logger.debug('event', 'Session directory excluded from title generation', {
+                            sessionId,
+                            directory: normalizedDir,
+                            excludeDirectories: config.excludeDirectories
+                        })
+                        return
+                    }
                 }
 
                 // Increment idle count for this session
