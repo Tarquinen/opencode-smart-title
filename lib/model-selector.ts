@@ -11,6 +11,46 @@
 import type { LanguageModel } from 'ai';
 import type { Logger } from './logger';
 
+function trimText(value: unknown, max = 500): string | undefined {
+    if (typeof value !== 'string') {
+        return undefined;
+    }
+    return value.length > max ? `${value.slice(0, max)}...` : value;
+}
+
+function serializeError(error: unknown): Record<string, unknown> {
+    if (!error || typeof error !== 'object') {
+        return {
+            type: typeof error,
+            value: String(error)
+        };
+    }
+
+    const err = error as any;
+    const cause = err?.cause && typeof err.cause === 'object'
+        ? {
+            name: err.cause.name,
+            message: trimText(err.cause.message),
+            constructor: err.cause.constructor?.name,
+            code: err.cause.code,
+            stack: trimText(err.cause.stack)
+        }
+        : undefined;
+
+    return {
+        name: err.name,
+        message: trimText(err.message),
+        constructor: err.constructor?.name,
+        code: err.code,
+        providerID: err.providerID,
+        modelID: err.modelID,
+        status: err.status,
+        stack: trimText(err.stack),
+        keys: Object.keys(err),
+        cause
+    };
+}
+
 export interface ModelInfo {
     providerID: string;
     modelID: string;
@@ -61,11 +101,22 @@ export async function selectModel(
     logger?: Logger,
     configModel?: string
 ): Promise<ModelSelectionResult> {
+    const startedAt = Date.now();
     logger?.info('model-selector', 'Model selection started', { configModel });
-    
+
     // Lazy import - only load the 812KB auth provider package when actually needed
+    logger?.debug('model-selector', 'Importing @tarquinen/opencode-auth-provider');
+    const importStartedAt = Date.now();
     const { OpencodeAI } = await import('@tarquinen/opencode-auth-provider');
+    logger?.debug('model-selector', 'Auth provider imported', {
+        importDurationMs: Date.now() - importStartedAt
+    });
+
+    const initStartedAt = Date.now();
     const opencodeAI = new OpencodeAI();
+    logger?.debug('model-selector', 'OpencodeAI instance created', {
+        initDurationMs: Date.now() - initStartedAt
+    });
 
     let failedModelInfo: ModelInfo | undefined;
 
@@ -83,10 +134,12 @@ export async function selectModel(
             });
 
             try {
+                const attemptStartedAt = Date.now();
                 const model = await opencodeAI.getLanguageModel(providerID, modelID);
                 logger?.info('model-selector', '✓ Successfully using config-specified model', {
                     providerID,
-                    modelID
+                    modelID,
+                    durationMs: Date.now() - attemptStartedAt
                 });
                 return {
                     model,
@@ -98,7 +151,7 @@ export async function selectModel(
                 logger?.warn('model-selector', '✗ Failed to use config-specified model, falling back', {
                     providerID,
                     modelID,
-                    error: error.message
+                    error: serializeError(error)
                 });
                 // Track the failed model
                 failedModelInfo = { providerID, modelID };
@@ -107,7 +160,12 @@ export async function selectModel(
     }
 
     logger?.debug('model-selector', 'Fetching available authenticated providers');
+    const listStartedAt = Date.now();
     const providers = await opencodeAI.listProviders();
+    logger?.debug('model-selector', 'Authenticated providers fetched', {
+        durationMs: Date.now() - listStartedAt
+    });
+
     const availableProviderIDs = Object.keys(providers);
     logger?.info('model-selector', 'Available authenticated providers', {
         providerCount: availableProviderIDs.length,
@@ -115,7 +173,9 @@ export async function selectModel(
         providers: Object.entries(providers).map(([id, info]) => ({
             id,
             source: info.source,
-            name: info.info.name
+            name: info.info.name,
+            modelCount: Object.keys(info.info.models || {}).length,
+            sampleModels: Object.keys(info.info.models || {}).slice(0, 10)
         }))
     });
 
@@ -138,10 +198,12 @@ export async function selectModel(
         logger?.debug('model-selector', `Attempting ${providerID}/${fallbackModelID}`);
 
         try {
+            const attemptStartedAt = Date.now();
             const model = await opencodeAI.getLanguageModel(providerID, fallbackModelID);
             logger?.info('model-selector', `✓ Successfully using fallback model`, {
                 providerID,
-                modelID: fallbackModelID
+                modelID: fallbackModelID,
+                durationMs: Date.now() - attemptStartedAt
             });
             return {
                 model,
@@ -152,13 +214,20 @@ export async function selectModel(
             };
         } catch (error: any) {
             logger?.warn('model-selector', `✗ Failed to use ${providerID}/${fallbackModelID}`, {
-                error: error.message
+                error: serializeError(error)
             });
             continue;
         }
     }
 
+    logger?.error('model-selector', 'Model selection failed after exhausting configured and fallback models', {
+        configModel,
+        providerPriority: PROVIDER_PRIORITY,
+        fallbackModels: FALLBACK_MODELS,
+        totalDurationMs: Date.now() - startedAt,
+        failedModelInfo
+    });
+
     throw new Error('No available models for title generation. Please authenticate with at least one provider.');
 }
-
 
